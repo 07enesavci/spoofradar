@@ -1,4 +1,4 @@
-# 🛰️ SkyGuard
+# 🛰️ SpoofRadar
 
 **Canlı uçak trafiğini izleyip spoofing / anomali / GPS-jamming tespit eden savunma aracı.**
 Donanım gerekmez — veri halka açık [OpenSky Network](https://opensky-network.org) API'sinden gelir.
