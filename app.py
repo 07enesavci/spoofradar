@@ -39,7 +39,7 @@ from verify import verify, VERDICT_LABEL
 from events import find_dark, find_conflicts
 from geofence import check_zones, DEFAULT_ZONES
 from fingerprint import FingerprintStore
-from simulator import inject, SCENARIO_LABELS
+from simulator import inject, SCENARIO_LABELS, generate_normal_traffic
 from report import build_html_report
 from mlat import (Receiver, solve_tdoa, geodetic_to_ecef, cross_check, C,
                   _HAS_NUMPY)
@@ -144,6 +144,7 @@ ss.setdefault("tracks", {})               # icao24 -> [[lon,lat],...] rota izi
 ss.setdefault("fp", FingerprintStore(min_obs=8))  # uçak parmak izi
 ss.setdefault("count_hist", [])           # (uçak, kural, ml) gecmisi = sparkline
 ss.setdefault("last_report", "")          # son AI rapor metni
+ss.setdefault("auto_offline", False)      # canli veri hata verince cevrimdisi'na dus
 
 TRACK_LEN = 25  # her uçak icin saklanan son konum sayisi (rota izi)
 HIST_LEN = 40   # sparkline nokta sayisi
@@ -217,6 +218,10 @@ with st.sidebar.expander("⚙️ Ayarlar", expanded=False):
 # DEMO — expander
 with st.sidebar.expander("🎬 Spoof demo modu", expanded=False):
     st.caption("Gerçek trafiğe sahte uçak enjekte et — tespiti canlı gör.")
+    offline_mode = st.checkbox(
+        "🧪 Çevrimdışı mod (internet yok)", value=False, key="offline_mode",
+        help="Açıksa OpenSky'a bağlanmaz; sentetik ama gerçekçi trafik üretir. "
+             "Sunum/mülakatta internet olmadan da tespit motoru çalışır.")
     demo_on = st.checkbox("Demo enjeksiyonu aç", value=False)
     scenarios = []
     if demo_on:
@@ -245,9 +250,13 @@ st.sidebar.divider()
 st.sidebar.caption("Veri: OpenSky Network (halka acik). Sadece okuma, savunma amacli.")
 
 
-def fetch_and_analyze():
+def fetch_and_analyze(offline: bool = False):
     bbox = BBOXES[region]
-    current = fetch_states(bbox=bbox)
+    if offline:
+        # Sentetik trafik — ag yok. Demo enjeksiyonu yine ustune biner.
+        current = generate_normal_traffic(bbox)
+    else:
+        current = fetch_states(bbox=bbox)
 
     # Spoof demo: sahte uçaklari gercek trafige enjekte et (prev'e tohum ekler)
     if demo_on and scenarios:
@@ -341,20 +350,38 @@ def _dashboard():
     # Manuel yenile butonu (otomatik kapaliyken elle guncelle)
     manual = st.button("🔄 Yenile", help="Veriyi şimdi tazele.")
 
+    # Kullanici cevrimdisi sectiyse VEYA canli veri daha once patlayip
+    # otomatik cevrimdisi'na dustuysek sentetik trafik kullan.
+    want_offline = offline_mode or ss.auto_offline
+
     # Yeni veri: ilk yukleme, manuel buton, VEYA otomatik+sure doldu+kota var.
-    should_fetch = (ss.cache is None) or manual or (
+    # Cevrimdisi modda kota yok — surekli tazele (ag maliyeti sifir).
+    should_fetch = (ss.cache is None) or manual or want_offline or (
         auto and age >= interval and q.can_afford(cost))
 
     if should_fetch:
         try:
-            ss.cache = fetch_and_analyze()
-            q.record(cost)              # sadece basarili istegi ucretlendir
+            ss.cache = fetch_and_analyze(offline=want_offline)
+            if not want_offline:
+                q.record(cost)          # sadece basarili CANLI istegi ucretlendir
+                ss.auto_offline = False  # canli veri geldi: fallback kapat
             ss.last_fetch = time.time()
         except Exception as e:
-            if ss.cache is None:
-                st.error(f"Veri cekilemedi (muhtemelen kota/429): {e}")
+            # Canli veri patladi (Cloud timeout / kota / internet yok).
+            # ONEMLI: st.stop() ile OLME — cevrimdisi demoya dus, dashboard yasasin.
+            if not want_offline:
+                ss.auto_offline = True
+                try:
+                    ss.cache = fetch_and_analyze(offline=True)
+                    ss.last_fetch = time.time()
+                except Exception as e2:
+                    if ss.cache is None:
+                        st.error(f"Veri cekilemedi ve cevrimdisi demo da basarisiz: {e2}")
+                        st.stop()
+                    st.warning(f"Istek basarisiz, onbellek gosteriliyor: {e}")
+            elif ss.cache is None:
+                st.error(f"Cevrimdisi demo uretilemedi: {e}")
                 st.stop()
-            st.warning(f"Istek basarisiz, onbellek gosteriliyor: {e}")
 
     d = ss.cache
     current = d["current"]
@@ -368,9 +395,22 @@ def _dashboard():
     traj_dev = d.get("traj_dev", [])
     qs = q.status(cost)
 
+    # --- Cevrimdisi demo afisi -------------------------------------------------
+    if want_offline:
+        if offline_mode:
+            st.info("🧪 **ÇEVRİMDIŞI DEMO** — sentetik trafik (internet gerekmez). "
+                    "Tespit motoru gerçek algoritmalarla çalışıyor. "
+                    "Canlı veri için sol menüden çevrimdışı modu kapat.")
+        else:
+            st.warning("📡 **Canlı veriye ulaşılamadı** (Cloud/OpenSky yavaş olabilir) — "
+                       "otomatik **çevrimdışı demoya** geçildi. Motor çalışmaya devam "
+                       "ediyor. '🔄 Yenile' ile canlı veriyi tekrar dener.")
+
     # --- Kota durumu (ana alan — fragment sidebar'a yazamaz) -------------------
     # NOT: fragment icinde st.sidebar cagrilamaz. Kota durumunu ana alanda goster.
-    if qs["exhausted"]:
+    if want_offline:
+        pass  # cevrimdisi: kota harcanmiyor, gosterme
+    elif qs["exhausted"]:
         st.error(f"📊 Kota bitti ({qs['used']}/{qs['budget']} kredi). "
                  f"Reset ~{qs['reset_in_min']} dk sonra. İstek durdu, veri önbellekten.")
     elif qs["low"]:

@@ -12,6 +12,7 @@ Uretilen senaryolar (icao24 'SIM' ile baslar, kolay ayirt edilir):
 
 from __future__ import annotations
 
+import math
 import random
 import time
 
@@ -19,9 +20,9 @@ from opensky import Aircraft
 
 
 def _mk(icao, cs, lat, lon, alt, vel, track, t, squawk="1200",
-        vr=0.0, geo=None, src=0) -> Aircraft:
+        vr=0.0, geo=None, src=0, country="SIMULATION") -> Aircraft:
     return Aircraft(
-        icao24=icao, callsign=cs, country="SIMULATION",
+        icao24=icao, callsign=cs, country=country,
         lon=lon, lat=lat, baro_alt=alt, geo_alt=geo if geo is not None else alt,
         on_ground=False, velocity=vel, track=track, vertical_rate=vr,
         squawk=squawk, timestamp=t, position_source=src,
@@ -73,6 +74,75 @@ def inject(current: list[Aircraft], prev_by_icao: dict,
                          squawk="7700"))
 
     return fakes
+
+
+# --- Cevrimdisi demo: sentetik NORMAL trafik ------------------------------
+# Internet/OpenSky yoksa bile dashboard calissin diye gercekci filo uretir.
+# Mulakat/sunum icin kritik: baglanti kopsa da tespit motoru gosterilir.
+_DEMO_AIRLINES = [
+    ("THY", "Turkey"), ("PGT", "Turkey"), ("SXS", "Turkey"), ("KKK", "Turkey"),
+    ("DLH", "Germany"), ("AFR", "France"), ("UAE", "United Arab Emirates"),
+    ("QTR", "Qatar"), ("RYR", "Ireland"), ("EZY", "United Kingdom"),
+    ("SWR", "Switzerland"), ("AZA", "Italy"),
+]
+_ALT_LEVELS = [9000, 9500, 10000, 10500, 11000, 11600, 12000]
+
+# bbox anahtari -> filo (yerinde ilerletilir; her cagri konumlari tazeler)
+_demo_fleets: dict[tuple, list[dict]] = {}
+
+
+def generate_normal_traffic(bbox, n: int = 45) -> list[Aircraft]:
+    """Sentetik ama gercekci normal trafik anlik goruntusu.
+
+    Ayni filo cagrilar arasi KORUNUR ve her cagrida hiz*sure kadar ilerler —
+    boylece harita blipleri hareket eder ve rota izi (tracks) olusur. bbox
+    kenarina carpinca yon 'seker' (icerde kalir). icao24 'demo' ile baslar.
+    """
+    if not bbox:
+        bbox = (35.0, 25.0, 43.0, 45.0)
+    lamin, lomin, lamax, lomax = bbox
+    key = tuple(round(x, 3) for x in bbox) + (n,)
+    now = time.time()
+
+    fleet = _demo_fleets.get(key)
+    if fleet is None:
+        rng = random.Random(hash(key) & 0xFFFFFFFF)
+        fleet = []
+        for i in range(n):
+            al, ctry = rng.choice(_DEMO_AIRLINES)
+            fleet.append({
+                "icao": f"demo{i:03d}",
+                "cs": f"{al}{rng.randint(100, 999)}",
+                "country": ctry,
+                "lat": rng.uniform(lamin + 0.3, lamax - 0.3),
+                "lon": rng.uniform(lomin + 0.3, lomax - 0.3),
+                "track": rng.uniform(0, 359),
+                "vel": rng.uniform(180, 260),
+                "alt": rng.choice(_ALT_LEVELS),
+                "t": now,
+            })
+        _demo_fleets[key] = fleet
+
+    out = []
+    for f in fleet:
+        dt = min(now - f["t"], 30.0)   # ilk kare / uzun bekleme sicramasin
+        f["t"] = now
+        dist = f["vel"] * dt           # metre
+        rad = math.radians(f["track"])
+        f["lat"] += (dist * math.cos(rad)) / 111320.0
+        cosl = math.cos(math.radians(f["lat"])) or 1e-6
+        f["lon"] += (dist * math.sin(rad)) / (111320.0 * cosl)
+        # kenara carpinca iceri don
+        if f["lat"] <= lamin + 0.1 or f["lat"] >= lamax - 0.1:
+            f["track"] = (180 - f["track"]) % 360
+            f["lat"] = min(max(f["lat"], lamin + 0.15), lamax - 0.15)
+        if f["lon"] <= lomin + 0.1 or f["lon"] >= lomax - 0.1:
+            f["track"] = (360 - f["track"]) % 360
+            f["lon"] = min(max(f["lon"], lomin + 0.15), lomax - 0.15)
+        out.append(_mk(f["icao"], f["cs"], f["lat"], f["lon"], f["alt"],
+                       f["vel"], f["track"], now, geo=f["alt"],
+                       country=f["country"]))
+    return out
 
 
 SCENARIO_LABELS = {
