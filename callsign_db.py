@@ -73,7 +73,12 @@ def validate_callsign(callsign: str, origin_country: str) -> dict:
                 "detail": f"'{code}' bilinmeyen havayolu kodu — doğrulanamaz."}
 
     name, country = entry
-    if origin_country and country.lower() == origin_country.lower():
+    # Ulke bilgisi YOKSA (or. adsb.lol origin_country vermez) uyusmazlik
+    # SAYMA — dogrulanamaz. Yoksa her taninan havayolu yanlis-pozitif olur.
+    if not (origin_country or "").strip():
+        return {"status": "unknown", "airline": name,
+                "detail": f"{name} — kaynak ülke bilgisi vermiyor, doğrulanamaz."}
+    if country.lower() == origin_country.lower():
         return {"status": "ok", "airline": name,
                 "detail": f"{name} ({country}) — ülke uyumlu."}
     return {"status": "mismatch", "airline": name,

@@ -557,6 +557,11 @@ def test_callsign():
     check("bilinmeyen kod unknown",
           validate_callsign("XYZ99", "Turkey")["status"] == "unknown")
     check("bos callsign empty", validate_callsign("", "Turkey")["status"] == "empty")
+    # Ulke YOKSA (adsb.lol gibi) uyusmazlik SAYILMAZ — yanlis-pozitif onleme
+    check("THY+bos ulke unknown (mismatch DEGIL)",
+          validate_callsign("THY1", "")["status"] == "unknown")
+    check("THY+None ulke unknown",
+          validate_callsign("THY1", None)["status"] == "unknown")
     check("havayolu veritabani dolu", len(AIRLINE_CODES) >= 20)
 
 
