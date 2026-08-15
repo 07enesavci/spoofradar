@@ -1,0 +1,10 @@
+requests>=2.31
+numpy>=2.0
+scikit-learn>=1.5
+streamlit>=1.40
+pydeck>=0.9
+pandas>=2.0
+# Opsiyonel — AI tehdit raporu icin (yoksa sablon rapor):
+# anthropic>=0.40
+# Canli AIS deniz beslemesi icin (aisstream.io WebSocket):
+websocket-client>=1.6

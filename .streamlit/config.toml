@@ -1,0 +1,16 @@
+# ADS-B Guard - dashboard temasi ve ayarlar
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# "Deploy" butonu + hamburger menuyu sadelestir (yayin butonu gizlenir)
+toolbarMode = "minimal"
+
+[theme]
+base = "dark"
+primaryColor = "#22d3ee"          # camgobegi vurgu (havacilik/radar hissi)
+backgroundColor = "#0b1220"       # koyu lacivert
+secondaryBackgroundColor = "#131c2e"
+textColor = "#e6edf5"
+font = "monospace"
