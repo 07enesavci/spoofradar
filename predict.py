@@ -90,3 +90,52 @@ def aircraft_type(icao24: str, timeout: int = 4) -> dict | None:
         pass
     _TYPE_CACHE[h] = None
     return None
+
+
+# --- Uçak fotografi (planespotters.net ucretsiz, anahtarsiz) ---------------
+_PHOTO_CACHE: dict[str, dict] = {}
+
+
+def aircraft_photo(icao24: str, registration: str | None = None,
+                   timeout: int = 5) -> dict | None:
+    """ICAO24 (veya tescil) -> gercek ucak fotografi (planespotters.net).
+
+    Doner: {thumb, link, photographer} veya None. Onbellekli, anahtarsiz.
+    Atif ZORUNLU (planespotters kurali): fotografci adi + link gosterilir.
+    """
+    h = (icao24 or "").lower().strip()
+    if not h:
+        return None
+    if h in _PHOTO_CACHE:
+        return _PHOTO_CACHE[h]
+
+    urls = [f"https://api.planespotters.net/pub/photos/hex/{h}"]
+    if registration:
+        urls.append(f"https://api.planespotters.net/pub/photos/reg/"
+                    f"{registration.strip()}")
+    # planespotters KURALI: User-Agent'ta iletisim URL'i/e-posta ZORUNLU
+    # (yoksa 403). Bu olmadan API foto vermez.
+    ua = "spoofradar/1.0 (+https://github.com/07enesavci/spoofradar)"
+    info = None
+    for url in urls:
+        try:
+            r = requests.get(url, timeout=timeout, headers={"User-Agent": ua})
+            if not r.ok:
+                continue
+            photos = (r.json() or {}).get("photos") or []
+            if not photos:
+                continue
+            p = photos[0]
+            thumb = (p.get("thumbnail_large") or p.get("thumbnail") or {})
+            src = thumb.get("src")
+            if src:
+                info = {
+                    "thumb": src,
+                    "link": p.get("link"),
+                    "photographer": p.get("photographer"),
+                }
+                break
+        except Exception:
+            continue
+    _PHOTO_CACHE[h] = info
+    return info

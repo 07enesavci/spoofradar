@@ -45,7 +45,7 @@ from report import build_html_report
 from mlat import (Receiver, solve_tdoa, geodetic_to_ecef, cross_check, C,
                   _HAS_NUMPY)
 from callsign_db import validate_callsign
-from predict import trajectory_deviation, aircraft_type
+from predict import trajectory_deviation, aircraft_type, aircraft_photo
 from ais import Ship, analyze_ships, ais_available
 # drone.py modulu kalir (yol haritasi — RemoteID yerel alici gerektirir),
 # dashboard'dan kaldirildi (canli veri uzaktan cekilemez).
@@ -716,18 +716,31 @@ def _dashboard():
             vv = verdicts.get(sel["icao24"])
             if vv and vv.reasons:
                 st.caption("**Doğrulama kanıtları:**  " + "  ·  ".join(vv.reasons))
-            # Uçak tipi/tescil (hexdb.io — buton ile, her uçak icin API cagirmamak icin)
-            if st.button("🔎 Uçak tipi/tescil sorgula (hexdb.io)"):
+            # Uçak tipi/tescil + FOTOGRAF (buton ile — her uçak icin API cagirmamak icin)
+            if st.button("🔎 Uçak bilgisi + fotoğraf getir"):
                 info = aircraft_type(sel["icao24"])
-                if info and any(info.values()):
-                    st.write({k: v for k, v in {
-                        "Tescil": info.get("registration"),
-                        "Tip": info.get("type"),
-                        "Üretici": info.get("manufacturer"),
-                        "İşletmeci": info.get("operator"),
-                    }.items() if v})
-                else:
-                    st.info("Bu uçak veritabanında bulunamadı.")
+                reg = info.get("registration") if info else None
+                with st.spinner("Uçak sorgulanıyor..."):
+                    photo = aircraft_photo(sel["icao24"], reg)
+                pc1, pc2 = st.columns([1, 1])
+                with pc1:
+                    if photo and photo.get("thumb"):
+                        st.image(photo["thumb"], width="stretch")
+                        who = photo.get("photographer") or "planespotters.net"
+                        link = photo.get("link") or "https://www.planespotters.net"
+                        st.caption(f"📷 Foto: [{who}]({link}) · planespotters.net")
+                    else:
+                        st.info("📷 Bu uçak için fotoğraf bulunamadı.")
+                with pc2:
+                    if info and any(info.values()):
+                        st.write({k: v for k, v in {
+                            "Tescil": info.get("registration"),
+                            "Tip": info.get("type"),
+                            "Üretici": info.get("manufacturer"),
+                            "İşletmeci": info.get("operator"),
+                        }.items() if v})
+                    else:
+                        st.info("Tip/tescil veritabanında bulunamadı.")
 
     # --- SEKME: Olaylar (karanlik uçak, cakisma, geofence, fingerprint) --------
     with tab_events:

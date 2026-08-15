@@ -589,6 +589,12 @@ def test_predict():
     check("celiskili rota supheli", d2 and d2["suspicious"])
     check("az nokta None", trajectory_deviation([[32, 39]], 250, 90) is None)
 
+    # Ucak fotografi (planespotters) — agsiz guvenli kontroller
+    from predict import aircraft_photo, _PHOTO_CACHE
+    check("bos hex foto None", aircraft_photo("") is None)
+    _PHOTO_CACHE["deadbe"] = {"thumb": "x", "link": "y", "photographer": "z"}
+    check("foto onbellek calisir", aircraft_photo("deadbe")["thumb"] == "x")
+
 
 # --- ais.py ----------------------------------------------------------------
 def test_ais():
