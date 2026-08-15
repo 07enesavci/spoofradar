@@ -3,7 +3,8 @@ __pycache__/
 quota_state.json
 alerts.db
 rapor.html
-model.pkl
 training_data.csv
+# NOT: model.pkl (onceden egitilmis ML) BILEREK izlenir — Cloud'da olgun
+# tespit icin gerekli (isinma beklemez). history_train.py ile yeniden uretilir.
 _test_alerts.db
 .streamlit/secrets.toml

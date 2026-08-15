@@ -44,7 +44,7 @@ def build_html_report(current, rule_alerts, ml_alerts, zones, region="-",
         ["Enlem", "Boylam", "Bozulma", "Bozulmuş", "Toplam"]) if zones else "<p>Yok.</p>"
 
     doc = f"""<!doctype html><html lang="tr"><head><meta charset="utf-8">
-<title>ADS-B Guard Raporu — {region}</title>
+<title>SpoofRadar Raporu — {region}</title>
 <style>
   body {{ font-family: system-ui, sans-serif; margin: 40px; color: #1a2332;
           background: #fff; }}
@@ -60,7 +60,7 @@ def build_html_report(current, rule_alerts, ml_alerts, zones, region="-",
   .foot {{ margin-top: 30px; color: #888; font-size: 12px; }}
   @media print {{ body {{ margin: 12mm; }} }}
 </style></head><body>
-<h1>🛰️ ADS-B Guard — Tehdit Raporu</h1>
+<h1>🛰️ SpoofRadar — Tehdit Raporu</h1>
 <p class="meta">Bölge: <b>{region}</b> · Üretim: {ts} · Veri: OpenSky Network (halka açık)</p>
 <div class="summary">
   <b>Özet:</b> {len(current)} uçak izlendi.

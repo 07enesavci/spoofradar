@@ -51,14 +51,15 @@ class AnomalyModel:
     """Kayan pencere uzerinde egitilen denetimsiz aykiri deger tespiti."""
 
     def __init__(self, window: int = 2000, min_train: int = 300,
-                 contamination: float = 0.02, score_threshold: float = -0.62):
+                 contamination: float = 0.02, score_threshold: float = -0.60):
         self.buffer: deque[list[float]] = deque(maxlen=window)
         self.min_train = min_train
         self.contamination = contamination
         # MUTLAK esik: IsolationForest'in sabit-yuzde (contamination) predict()
-        # yerine ham skora bakariz. Temiz trafik = neredeyse SIFIR flag; sadece
-        # gercekten uç uçaklar isaretlenir. Canli veriyle kalibre: normal
-        # trafikte skor medyani ~-0.46, en aykiri ~-0.68; -0.62 = ~%0.3.
+        # yerine ham skora bakariz. Temiz trafik = cok az flag; sadece gercekten
+        # uç uçaklar isaretlenir. 4269 canli ornekle egitilmis model.pkl uzerinde
+        # kalibre: skor medyani ~-0.44, min ~-0.63; -0.60 = ~%0.23 (nadir, anlamli
+        # 'incele' listesi — yanlis-pozitif cok dusuk).
         self.score_threshold = score_threshold
         self.model = None
         self._backend = "sklearn" if _HAS_SKLEARN else "mad"

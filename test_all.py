@@ -497,7 +497,7 @@ def test_notify_report():
     path = build_html_report(ac, al, [], [], "Test", "_test_rapor.html")
     with open(path, encoding="utf-8") as f:
         html = f.read()
-    check("rapor HTML gecerli", "<html" in html and "ADS-B Guard" in html)
+    check("rapor HTML gecerli", "<html" in html and "SpoofRadar" in html)
     check("rapor alarmi icerir", "test detay" in html)
     check("rapor XSS-guvenli (escape)", "&lt;" in html or "<script>alert" not in html)
     os.remove(path)
@@ -562,7 +562,12 @@ def test_callsign():
           validate_callsign("THY1", "")["status"] == "unknown")
     check("THY+None ulke unknown",
           validate_callsign("THY1", None)["status"] == "unknown")
-    check("havayolu veritabani dolu", len(AIRLINE_CODES) >= 20)
+    check("havayolu veritabani genis (>=120)", len(AIRLINE_CODES) >= 120)
+    # Genisletilmis havayolulari hex-ulke ile capraz-dogrula (yanlis-pozitif yok)
+    from icao_country import country_from_icao
+    # THY 4ba... -> Turkey, callsign THY -> ok
+    check("PGT (Pegasus) tabloda", "PGT" in AIRLINE_CODES)
+    check("AEE (Aegean) tabloda", validate_callsign("AEE1", "Greece")["status"] == "ok")
 
 
 # --- predict.py ------------------------------------------------------------
@@ -680,6 +685,12 @@ def test_icao_country():
     section("icao_country.py")
     from icao_country import country_from_icao
     check("THY hex (4ba...) -> Turkey", country_from_icao("4ba9d0") == "Turkey")
+    check("Pakistan (765...) DEGIL Singapur", country_from_icao("765abc") == "Pakistan")
+    check("Singapur (76a...) dogru", country_from_icao("76abcd") == "Singapore")
+    from icao_country import _RANGES
+    srt = sorted(_RANGES)
+    overlap = any(srt[i][1] >= srt[i + 1][0] for i in range(len(srt) - 1))
+    check("aralik cakismasi yok", not overlap)
     check("Almanya (3c...) -> Germany", country_from_icao("3c4b26") == "Germany")
     check("ABD (a...) -> United States", country_from_icao("a12345") == "United States")
     check("Isvicre (4b0...) -> Switzerland", country_from_icao("4b0abc") == "Switzerland")

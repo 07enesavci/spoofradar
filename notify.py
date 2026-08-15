@@ -64,7 +64,7 @@ def notify_high_alerts(rule_alerts, region: str = "-") -> dict | None:
     high = [a for a in rule_alerts if a.severity == "high"]
     if not high:
         return None
-    lines = [f"🛰️ *ADS-B Guard* — {region} bölgesinde {len(high)} yüksek-önem alarm:"]
+    lines = [f"🛰️ *SpoofRadar* — {region} bölgesinde {len(high)} yüksek-önem alarm:"]
     for a in high[:10]:
         lines.append(f"• `{a.icao24}` {a.callsign or ''}: {a.detail}")
     return send("\n".join(lines))

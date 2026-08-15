@@ -104,7 +104,7 @@ KIND_LABELS = {
 SEV_LABEL = {"high": "🔴 Yüksek", "med": "🟠 Orta", "low": "⚪ Düşük"}
 SEV_RANK = {"high": 0, "med": 1, "low": 2}
 
-st.set_page_config(page_title="ADS-B Guard", layout="wide", page_icon="🛰️")
+st.set_page_config(page_title="SpoofRadar", layout="wide", page_icon="🛰️")
 
 # --- Harekat merkezi temasi (glow, monospace, radar hissi) -----------------
 st.markdown("""
@@ -152,7 +152,7 @@ TRACK_LEN = 25  # her uçak icin saklanan son konum sayisi (rota izi)
 HIST_LEN = 40   # sparkline nokta sayisi
 
 # --- Kenar cubugu ----------------------------------------------------------
-st.sidebar.title("🛰️ ADS-B Guard")
+st.sidebar.title("🛰️ SpoofRadar")
 
 # Canli radar tarama efekti (saf CSS — donen supurme + halkalar + blip)
 RADAR_HTML = """
@@ -799,50 +799,105 @@ def _dashboard():
 
     # --- SEKME 2: GPS jamming isi haritasi -------------------------------------
     with tab_jam:
-        st.subheader("GPS jamming şüpheli bölgeler")
+        st.subheader("📡 GPS jamming şüpheli bölgeler")
         st.caption("Vekil gösterge: barometrik (GPS'siz) vs geometrik (GPS) irtifa "
                    "sapması >1200 m ya da GNSS irtifası hiç yok. Kesin kanıt değil, "
                    "şüphe haritası. Avrupa/Tüm dünya daha çok veri görür.")
+
         cells = build_grid(current, cell_deg=1.0)
         zones = suspected_zones(cells, min_total=3, min_ratio=0.5)
-
         hot = [c for c in cells if c.total >= 3 and c.ratio > 0]
+
+        # --- Ozet metrikler (tek bakista) --------------------------------------
+        eval_total = sum(c.total for c in cells)
+        eval_degraded = sum(c.degraded for c in cells)
+        overall = (eval_degraded / eval_total * 100) if eval_total else 0.0
+        worst = max(zones, key=lambda z: z.ratio) if zones else None
+        jm1, jm2, jm3, jm4 = st.columns(4)
+        jm1.metric("📊 Değerlendirilen", eval_total, help="Seyir irtifasındaki uçak")
+        jm2.metric("📉 GNSS bozuk", eval_degraded,
+                   help="Baro-GNSS sapması yüksek / GNSS irtifası yok")
+        jm3.metric("🌐 Genel bozulma", f"%{overall:.1f}",
+                   delta_color="inverse", help="Bozuk / değerlendirilen")
+        jm4.metric("🔴 Şüpheli bölge", len(zones),
+                   help="≥3 uçak + ≥%50 bozulma olan hücre")
+
         if hot:
+            def _sev_color(r):   # yesil -> sari -> turuncu -> kirmizi
+                if r >= 0.8:
+                    return [230, 40, 40]
+                if r >= 0.6:
+                    return [240, 130, 30]
+                if r >= 0.35:
+                    return [240, 210, 40]
+                return [90, 200, 120]
+
             hdf = pd.DataFrame([{
                 "lat": c.lat, "lon": c.lon, "ratio": c.ratio,
+                "ratio_pct": round(c.ratio * 100),
                 "total": c.total, "degraded": c.degraded,
-                "color": [int(60 + 195 * c.ratio), int(60 * (1 - c.ratio)), 40],
-                "weight": c.ratio,
+                "color": _sev_color(c.ratio),
+                "weight": c.degraded,                 # yogunluk = bozuk uçak sayisi
+                "elev": c.degraded * 8000,            # 3D sütun yuksekligi
             } for c in hot])
-            view = pdk.ViewState(latitude=hdf["lat"].mean(),
-                                 longitude=hdf["lon"].mean(),
-                                 zoom=2 if region == "Tum dunya" else 4)
+            _vlat, _vlon, _ = MAP_VIEW[region]
+            view = pdk.ViewState(latitude=_vlat, longitude=_vlon,
+                                 zoom=(2 if region == "Tum dunya" else 4),
+                                 pitch=45)
+            # 1) yumusak isi gradyani (yesil->kirmizi)
             heat = pdk.Layer(
                 "HeatmapLayer", data=hdf,
                 get_position="[lon, lat]", get_weight="weight",
-                radius_pixels=40, opacity=0.6,
+                radius_pixels=55, opacity=0.55,
+                color_range=[[90, 200, 120], [240, 210, 40], [240, 130, 30],
+                             [230, 40, 40], [150, 10, 10]],
             )
-            grid = pdk.Layer(
-                "ScatterplotLayer", data=hdf,
-                get_position="[lon, lat]", get_fill_color="color",
-                get_radius=25000, pickable=True, opacity=0.5,
+            # 2) 3D bozulma sütunlari (yukseklik = bozuk uçak, renk = oran)
+            cols = pdk.Layer(
+                "ColumnLayer", data=hdf,
+                get_position="[lon, lat]", get_elevation="elev",
+                elevation_scale=1, radius=22000,
+                get_fill_color="color", pickable=True, opacity=0.85,
+                auto_highlight=True,
             )
             st.pydeck_chart(pdk.Deck(
-                layers=[heat, grid], initial_view_state=view, map_style="dark",
-                tooltip={"text": "bozulma {degraded}/{total} uçak"},
+                layers=[heat, cols], initial_view_state=view, map_style="dark",
+                tooltip={"html": "<b>GPS bozulma</b><br/>{degraded}/{total} uçak "
+                                 "(%{ratio_pct})<br/>{lat}, {lon}",
+                         "style": {"backgroundColor": "#0a1524",
+                                   "color": "#e6f7ff"}},
             ))
+            st.caption("🟢 düşük → 🟡 orta → 🟠 yüksek → 🔴 kritik bozulma   ·   "
+                       "sütun yüksekliği = bozuk uçak sayısı   ·   yığın = ısı yoğunluğu")
         else:
-            st.info("Bu bölgede değerlendirilebilir seyir trafiği yok.")
+            st.info("Bu bölgede değerlendirilebilir seyir trafiği yok "
+                    "(Avrupa / Tüm dünya seç → daha çok veri).")
 
         if zones:
-            st.warning(f"{len(zones)} yüksek-şüpheli bölge:")
+            def _sev_lbl(r):
+                return "🔴 kritik" if r >= 0.8 else ("🟠 yüksek" if r >= 0.6
+                                                    else "🟡 orta")
+            st.warning(f"⚠️ {len(zones)} yüksek-şüpheli bölge "
+                       f"(en yüksek %{worst.ratio*100:.0f}):")
             st.dataframe(pd.DataFrame([{
+                "Önem": _sev_lbl(z.ratio),
                 "Enlem": round(z.lat, 1), "Boylam": round(z.lon, 1),
-                "Bozulma oranı": f"{z.ratio*100:.0f}%",
+                "Bozulma oranı": f"%{z.ratio*100:.0f}",
                 "Bozulmuş": z.degraded, "Toplam uçak": z.total,
             } for z in zones]), width="stretch", hide_index=True)
         else:
-            st.success("Yüksek-şüpheli jamming bölgesi yok.")
+            st.success("✅ Yüksek-şüpheli jamming bölgesi yok — GNSS bütünlüğü temiz.")
+
+        with st.expander("ℹ️ Gerçek dünya jamming bölgeleri — bağlam"):
+            st.markdown(
+                "GPS jamming/spoofing gerçek ve artan bir tehdit. Bilinen yoğun "
+                "bölgeler (kamuya açık raporlar):\n"
+                "- **Doğu Akdeniz / Kıbrıs** — sık GNSS bozulması\n"
+                "- **Karadeniz** — çatışma kaynaklı jamming\n"
+                "- **Baltık / Kaliningrad** — sınır ötesi jamming\n"
+                "- **Ortadoğu (Suriye, Irak, İran sınırı)** — askeri kaynaklı\n\n"
+                "Bu araç aynı sapma imzasını canlı veride arar — sonuçlar bu "
+                "bölgelerle örtüşürse tespit çalışıyor demektir.")
 
     # --- SEKME: Multilateration (MLAT) -----------------------------------------
     with tab_mlat:
