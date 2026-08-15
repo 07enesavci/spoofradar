@@ -338,6 +338,28 @@ def test_simulator():
     check("emergency squawk tetikler", "emergency_squawk" in kinds)
     check("5 senaryo etiketi var", len(SCENARIO_LABELS) == 5)
 
+    # Cevrimdisi sentetik trafik ureteci
+    from simulator import generate_normal_traffic
+    bbox = (35.0, 25.0, 43.0, 45.0)
+    t1 = generate_normal_traffic(bbox, n=30)
+    check("cevrimdisi 30 ucak uretir", len(t1) == 30)
+    check("hepsi konumlu", all(a.has_position for a in t1))
+    check("hepsi bbox icinde",
+          all(bbox[0] < a.lat < bbox[2] and bbox[1] < a.lon < bbox[3] for a in t1))
+    check("demo icao prefix", all(a.icao24.startswith("demo") for a in t1))
+    check("gercekci hiz (150-280 m/s)", all(150 <= a.velocity <= 280 for a in t1))
+    import time as _t
+    _t.sleep(0.5)
+    t2 = generate_normal_traffic(bbox, n=30)
+    moved = any(a.lat != b.lat or a.lon != b.lon for a, b in zip(t1, t2))
+    check("filo cagrilar arasi hareket eder", moved)
+    # Cevrimdisi trafik + spoof enjeksiyonu birlikte
+    prev = {}
+    combo = t2 + inject(t2, prev, ["teleport"])
+    a2 = analyze(prev, combo)
+    check("cevrimdisi+spoof tespit tetikler",
+          any(x.kind == "impossible_speed" for x in a2))
+
 
 # --- mlat.py ---------------------------------------------------------------
 def test_mlat():

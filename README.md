@@ -30,6 +30,28 @@ Bu yüzden sahte uçak enjekte edilebilir veya gerçek uçağın verisi bozulabi
 
 **Yanlış-pozitif düşük:** kural %0, geofence %0, ML ~%0.7 (canlı veriyle kalibre).
 
+### Mimari — veri nasıl akıyor
+
+```mermaid
+flowchart LR
+    A[OpenSky Network<br/>canlı ADS-B] --> B[opensky.py<br/>çek + retry]
+    O[Çevrimdışı üreteç<br/>simulator.py] -. internet yoksa .-> C
+    B --> C[Anlık trafik<br/>list Aircraft]
+    C --> D{Tespit motoru}
+    D --> D1[Kural<br/>detectors.py]
+    D --> D2[ML aykırı<br/>ml_detector.py]
+    D --> D3[Çok-sinyal<br/>verify.py]
+    D --> D4[MLAT/TDOA<br/>mlat.py]
+    D --> D5[Geofence · Çağrı · Parmak izi<br/>· Jamming · Rota]
+    D1 & D2 & D3 & D4 & D5 --> E[Durum özeti<br/>🟢🟡🔴]
+    E --> F[Streamlit dashboard<br/>harita · alarm · trend]
+    E --> G[SQLite geçmiş<br/>alerts_db.py]
+    E --> H[AI rapor · REST API<br/>· bildirim]
+```
+
+Canlı veri gelmezse motor **çevrimdışı sentetik trafikle** aynı algoritmaları çalıştırır —
+sunum/mülakatta internet olmadan da tespit gösterilir.
+
 ## Yasal mı?
 
 Evet. Sadece halka açık veriyi **okur ve analiz eder**. Hiçbir sisteme erişim, hiçbir sinyal
@@ -45,6 +67,11 @@ streamlit run app.py
 ```
 
 Tarayıcı açılır: `http://localhost:8501`
+
+**İnternet yok / hemen denemek istiyorsun?** Sol menü → **🎬 Spoof demo modu** →
+**🧪 Çevrimdışı mod**. OpenSky'a bağlanmadan sentetik trafik üretir; tespit motoru
+gerçek algoritmalarla çalışır. Canlı veri bir an ulaşılamazsa dashboard **otomatik**
+bu moda düşer (boş ekran vermez).
 
 **Konsol versiyonu:**
 ```bash
@@ -68,7 +95,7 @@ python test_all.py --live        # + canlı OpenSky (136 toplam)
 - **🎯 MLAT** — multilateration demo + OpenSky MLAT verisi
 - **📈 Alarm geçmişi** — trend grafiği + zaman makinesi (geçmiş replay)
 - **🤖 AI Rapor** — Claude ile doğal dil tehdit raporu, PDF/HTML indir
-- **🚢 Deniz & Drone** — AIS + RemoteID tespit demoları
+- **🚢 Deniz (AIS)** — gemi spoofing tespiti (aisstream.io anahtarıyla canlı, anahtarsız demo)
 
 Üstte **durum özeti** (🟢 SAKİN / 🟡 İZLE / 🔴 DİKKAT) tek bakışta tehdit seviyesi.
 Sol kenarda **canlı radar** + kota göstergesi. Ayarlar/demo expander'larda (arayüz sade).
@@ -152,7 +179,7 @@ python report.py                 # HTML/PDF rapor üret
 | `callsign_db.py` | Çağrı işareti doğrulama |
 | `predict.py` | Rota tahmini + uçak tipi |
 | `enrich.py` | Güven skoru, askeri, sinyal kaynağı |
-| `simulator.py` | Spoof demo (sahte uçak enjekte) |
+| `simulator.py` | Spoof demo + çevrimdışı sentetik trafik üreteci |
 | `ai_report.py` | Claude tehdit raporu |
 | `alerts_db.py` | SQLite geçmiş + zaman makinesi |
 | `quota.py` | OpenSky kota koruma |
@@ -171,9 +198,11 @@ python report.py                 # HTML/PDF rapor üret
 - [x] Çağrı doğrulama, rota tahmini, uçak tipi, karanlık uçak, çakışma, geofence, parmak izi
 - [x] AIS deniz, drone RemoteID, kalıcı ML eğitimi, spoof demo
 - [x] REST API, bildirim, PDF, Docker, 3D harita, radar, zaman makinesi, CSV
+- [x] Çevrimdışı demo modu (internetsiz sentetik trafik) + otomatik fallback
+- [x] Canlı AIS deniz beslemesi (aisstream.io WebSocket)
 - [ ] **Gerçek RTL-SDR entegrasyonu** — kendi alıcınla canlı MLAT (~30$ donanım)
 - [ ] **LSTM trajektori** — derin öğrenme anomali (deploy için ağır; yerel/GPU gerekir)
-- [ ] **Canlı AIS/drone besleme** — aisstream.io anahtarı / yerel RemoteID alıcısı
+- [ ] **Yerel RemoteID drone alıcısı** — canlı drone beslemesi
 - [ ] Bulut 7/24 deploy
 
 ---
