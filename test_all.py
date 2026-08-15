@@ -675,6 +675,24 @@ def test_adsblol():
     check("analyze adsb.lol veride cokmez", isinstance(analyze({}, [a]), list))
 
 
+# --- icao_country.py (hex -> ulke) -----------------------------------------
+def test_icao_country():
+    section("icao_country.py")
+    from icao_country import country_from_icao
+    check("THY hex (4ba...) -> Turkey", country_from_icao("4ba9d0") == "Turkey")
+    check("Almanya (3c...) -> Germany", country_from_icao("3c4b26") == "Germany")
+    check("ABD (a...) -> United States", country_from_icao("a12345") == "United States")
+    check("Isvicre (4b0...) -> Switzerland", country_from_icao("4b0abc") == "Switzerland")
+    check("bilinmeyen blok -> bos", country_from_icao("f00000") == "")
+    check("gecersiz hex -> bos", country_from_icao("zzz") == "")
+    check("bos -> bos", country_from_icao("") == "")
+    # Callsign dogrulama artik adsb.lol'de (hex-ulke) calisiyor
+    from callsign_db import validate_callsign
+    c = country_from_icao("4ba9d0")  # Turkey
+    check("THY + hex-ulke Turkey = ok",
+          validate_callsign("THY123", c)["status"] == "ok")
+
+
 # --- canli (opsiyonel) -----------------------------------------------------
 def test_live():
     section("CANLI OpenSky (--live)")
@@ -697,7 +715,7 @@ def main():
              test_simulator, test_mlat, test_quota, test_alerts_db,
              test_ai_report, test_notify_report, test_api, test_env,
              test_callsign, test_predict, test_ais, test_drone, test_history,
-             test_adsblol]
+             test_adsblol, test_icao_country]
     for t in tests:
         try:
             t()

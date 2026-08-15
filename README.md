@@ -1,9 +1,22 @@
 # 🛰️ SpoofRadar
 
+[![tests](https://github.com/07enesavci/spoofradar/actions/workflows/tests.yml/badge.svg)](https://github.com/07enesavci/spoofradar/actions/workflows/tests.yml)
+[![python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org)
+[![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![live demo](https://img.shields.io/badge/canlı-spoofradar.streamlit.app-ff4b4b.svg)](https://spoofradar.streamlit.app)
+
 **Canlı uçak trafiğini izleyip spoofing / anomali / GPS-jamming tespit eden savunma aracı.**
 Donanım gerekmez — veri halka açık [adsb.lol](https://adsb.lol) ve [OpenSky Network](https://opensky-network.org) API'lerinden gelir.
 
-Havacılık + siber güvenlik + veri bilimi. Aynı savunma mimarisi **deniz (AIS)** ve **drone (RemoteID)** trafiğine de taşınır.
+Havacılık + siber güvenlik + veri bilimi. Aynı savunma mimarisi **deniz (AIS)** trafiğine de taşınır.
+
+**🔴 Canlı demo: [spoofradar.streamlit.app](https://spoofradar.streamlit.app)**
+
+![Canlı trafik dashboard](docs/dashboard.png)
+> Canlı ADS-B trafiği, durum özeti (🟢🟡🔴), ML anomali tespiti, güven skoru. Yukarıda Türkiye üzerinde 344 gerçek uçak.
+
+![Deniz (AIS) spoofing tespiti](docs/maritime.png)
+> Deniz trafiği (AIS) — klon MMSI ve imkansız hız tespiti. Gemiler de şifresiz yayınlar; aynı spoofing sorunu.
 
 ---
 
@@ -175,6 +188,7 @@ python report.py                 # HTML/PDF rapor üret
 | `app.py` | Streamlit dashboard (7 sekme) |
 | `adsb_lol.py` | adsb.lol canlı ADS-B (Cloud-uyumlu, anahtarsız birincil kaynak) |
 | `opensky.py` | OpenSky API istemcisi (yedek kaynak) |
+| `icao_country.py` | ICAO hex → tescil ülkesi (çağrı-ülke doğrulaması) |
 | `detectors.py` | Kural-tabanlı tespit |
 | `ml_detector.py` | ML anomali (IsolationForest, mutlak eşik) |
 | `verify.py` | Çok-sinyal çapraz doğrulama |

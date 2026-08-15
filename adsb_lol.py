@@ -23,6 +23,7 @@ import time
 import requests
 
 from opensky import Aircraft
+from icao_country import country_from_icao
 
 ADSBLOL_URL = "https://api.adsb.lol/v2/lat/{lat}/lon/{lon}/dist/{dist}"
 
@@ -69,10 +70,11 @@ def _parse(ac: dict, snapshot_time: float) -> Aircraft:
     if rate is None:
         rate = _num(ac.get("geom_rate"))
     on_ground = ac.get("alt_baro") == "ground"
+    hexid = (ac.get("hex") or "").strip().lower()
     return Aircraft(
-        icao24=(ac.get("hex") or "").strip().lower(),
+        icao24=hexid,
         callsign=(ac.get("flight") or "").strip(),
-        country="",  # adsb.lol ulke vermez (cagri-ulke dogrulamasi 'bilinmiyor')
+        country=country_from_icao(hexid),  # hex -> tescil ulkesi (cagri dogrulama)
         lon=_num(ac.get("lon")),
         lat=_num(ac.get("lat")),
         baro_alt=alt_baro * FT_TO_M if alt_baro is not None else None,

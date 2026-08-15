@@ -455,13 +455,14 @@ def _dashboard():
     n_dark = len([e for e in events if e.kind == "dark"])
     n_ml = len(ml_alerts)
     n_traj = len(traj_dev)
-    if n_high or n_breach or n_cs:
+    if n_high or n_breach:
         st.error(f"🔴 **DİKKAT** — {n_high} imkansız hareket, {n_breach} yasak-bölge "
-                 f"ihlali, {n_cs} çağrı-işareti uyuşmazlığı. Güçlü spoofing / gerçek "
+                 "ihlali. Fiziksel/mantıksal imkansız = güçlü spoofing / gerçek "
                  "tehdit sinyali. Detay için aşağıdaki sekmelere bak.")
-    elif n_dark or n_ml or n_traj:
+    elif n_dark or n_ml or n_traj or n_cs:
         st.warning(f"🟡 **İZLE** — {n_dark} kayıp sinyal, {n_ml} sıradışı uçak, "
-                   f"{n_traj} rota sapması. Kesin tehdit değil, göz at.")
+                   f"{n_cs} çağrı-ülke uyuşmazlığı, {n_traj} rota sapması. Kesin "
+                   "tehdit değil (çapraz-tescil normal olabilir), göz at.")
     else:
         st.success("🟢 **SAKİN** — trafik temiz, yüksek-önem tehdit yok.")
 
@@ -469,14 +470,15 @@ def _dashboard():
     p_ac, p_rule, p_ml = ss.prev_counts
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("✈️ Uçak", len(current), delta=len(current) - p_ac)
-    c2.metric("🔴 Kesin alarm", n_high + n_breach + n_cs,
-              delta=(n_high + n_breach + n_cs) - p_rule, delta_color="inverse",
-              help="İmkansız hareket + yasak bölge + çağrı uyuşmazlığı")
-    c3.metric("🟡 İncele", n_ml + n_dark + n_traj, delta=n_ml - p_ml,
-              delta_color="inverse", help="Sıradışı + kayıp sinyal + rota sapması")
+    c2.metric("🔴 Kesin alarm", n_high + n_breach,
+              delta=(n_high + n_breach) - p_rule, delta_color="inverse",
+              help="İmkansız hareket + yasak bölge (fiziksel imkansız)")
+    c3.metric("🟡 İncele", n_ml + n_dark + n_traj + n_cs, delta=n_ml - p_ml,
+              delta_color="inverse",
+              help="Sıradışı + kayıp sinyal + rota sapması + çağrı-ülke uyuşmazlığı")
     c4.metric("🎯 MLAT/ML", "hazır" if ss.model.trained else "ısınıyor",
               help=f"ML backend: {ss.model.backend}")
-    ss.prev_counts = (len(current), n_high + n_breach + n_cs, len(ml_alerts))
+    ss.prev_counts = (len(current), n_high + n_breach, len(ml_alerts))
 
     # Sparkline: uçak + alarm zaman-serisi (canli istatistik seridi)
     ss.count_hist.append({"uçak": len(current), "kural": len(rule_alerts),
