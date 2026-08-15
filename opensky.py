@@ -91,14 +91,17 @@ def _parse_state(state: list, snapshot_time: float) -> Aircraft:
 
 
 def fetch_states(bbox: tuple[float, float, float, float] | None = None,
-                 timeout: int = 30, retries: int = 2) -> list[Aircraft]:
+                 timeout: tuple[int, int] = (6, 15), retries: int = 1) -> list[Aircraft]:
     """Canli durum anlik goruntusu (snapshot) getirir.
 
     bbox = (lamin, lomin, lamax, lomax) verilirse sadece o kutu.
     Ornek Turkiye civari: (35.0, 25.0, 43.0, 45.0)
 
-    SAGLAMLIK: timeout uzun (30s — OpenSky/Cloud yavas olabilir), retry'li.
-    Auth'lu istek timeout/hata verirse ANONIM dener (auth bazen yavaslatir).
+    HIZLI-BASARISIZ: timeout = (connect=6s, read=15s). Streamlit Cloud gibi
+    OpenSky'a ULASAMAYAN ortamlarda TCP connect kisa surede patlar; boylece
+    dashboard dakikalarca kilitlenmez, cagiran taraf hemen cevrimdisi demoya
+    duser. Connect/baglanti hatasinda alternatif auth'u DENEMEYIZ (ayni host
+    ayni sekilde patlar — bosuna bekleme). Sadece okuma/HTTP hatasinda tekrar.
     """
     params = {}
     if bbox:
@@ -119,9 +122,15 @@ def fetch_states(bbox: tuple[float, float, float, float] | None = None,
                 snapshot_time = data.get("time", time.time())
                 states = data.get("states") or []
                 return [_parse_state(s, snapshot_time) for s in states]
+            except (requests.exceptions.ConnectTimeout,
+                    requests.exceptions.ConnectionError) as e:
+                # Host ULASILAMAZ (Cloud egress engelli/yavas). Alternatif auth
+                # veya retry ayni sekilde patlar — HEMEN bbirak, hizli fallback.
+                raise RuntimeError(f"OpenSky'a baglanilamadi (host ulasilamaz): {e}")
             except Exception as e:
                 last_err = e
                 continue
-        time.sleep(2)  # retry oncesi kisa bekle
+        if attempt < retries:
+            time.sleep(1)  # sadece okuma/HTTP hatasinda kisa bekle + tekrar
 
     raise RuntimeError(f"OpenSky'a ulaşılamadı ({retries + 1} deneme): {last_err}")
