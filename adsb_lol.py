@@ -17,6 +17,7 @@ Alan birimleri OpenSky'dan FARKLI — burada Aircraft'a cevrilir:
 
 from __future__ import annotations
 
+import math
 import time
 
 import requests
@@ -28,21 +29,31 @@ ADSBLOL_URL = "https://api.adsb.lol/v2/lat/{lat}/lon/{lon}/dist/{dist}"
 FT_TO_M = 0.3048
 KNOT_TO_MS = 0.514444
 FTMIN_TO_MS = 0.00508
-MAX_DIST_NM = 250          # adsb.lol yaricap ust siniri
+MAX_DIST_NM = 4000        # buyuk bolge yaricap ust siniri (payload/hiz dengesi)
+MAX_AIRCRAFT = 600        # islenen ucak ust siniri — O(n^2) tespit kilitlenmesin
+# 'Tum dunya' (bbox None): yogun hava trafigi merkezine (Avrupa/Akdeniz) genis
+# yaricap. Merkeze en yakin MAX_AIRCRAFT tutulur = yogun, hizli, anlamli ornek.
+WORLD_CENTER = (40.0, 15.0)
+WORLD_DIST = 4000
 
 
 def _bbox_to_center_radius(bbox):
-    """bbox (lamin,lomin,lamax,lomax) -> (merkez_lat, merkez_lon, yaricap_nm)."""
+    """bbox (lamin,lomin,lamax,lomax) -> (merkez_lat, merkez_lon, yaricap_nm).
+
+    bbox None ('Tum dunya') -> yogun bolge merkezi + genis yaricap.
+    Yaricap bbox'i KAPSAR (yari-kosegen), MAX_DIST_NM ile sinirli.
+    """
     if not bbox:
-        return 39.0, 35.0, MAX_DIST_NM
+        return WORLD_CENTER[0], WORLD_CENTER[1], WORLD_DIST
     lamin, lomin, lamax, lomax = bbox
     clat = (lamin + lamax) / 2
     clon = (lomin + lomax) / 2
-    # kabaca yari-kosegen (nm). 1 derece lat ~ 60 nm.
+    # yari-kosegen (nm). 1 derece lat ~ 60 nm; boylam cos(lat) ile daralir.
     half_lat_nm = abs(lamax - lamin) / 2 * 60
-    half_lon_nm = abs(lomax - lomin) / 2 * 60
-    radius = min(MAX_DIST_NM, max(half_lat_nm, half_lon_nm))
-    return clat, clon, int(radius) or 100
+    half_lon_nm = abs(lomax - lomin) / 2 * 60 * math.cos(math.radians(clat))
+    radius = (half_lat_nm ** 2 + half_lon_nm ** 2) ** 0.5
+    radius = min(MAX_DIST_NM, max(100, int(radius) + 50))  # +50 nm pay
+    return clat, clon, radius
 
 
 def _num(v):
@@ -92,6 +103,18 @@ def fetch_states(bbox=None, timeout: tuple[int, int] = (6, 15)) -> list[Aircraft
     now = data.get("now")
     snapshot_time = (now / 1000.0) if isinstance(now, (int, float)) else time.time()
     ac_list = data.get("ac") or []
-    out = [_parse(a, snapshot_time) for a in ac_list]
-    # gecerli konumlu olanlar (bazi kayitlar konumsuz olabilir)
-    return [a for a in out if a.icao24]
+    out = [a for a in (_parse(a, snapshot_time) for a in ac_list) if a.icao24]
+
+    # SINIR: cok kalabalik bolge/dunya -> merkeze en yakin MAX_AIRCRAFT tut.
+    # Boylece harita dolu ama tespit (O(n^2) cakisma) Cloud'da kilitlenmez.
+    if len(out) > MAX_AIRCRAFT:
+        cosc = math.cos(math.radians(clat)) or 1e-6
+
+        def _d2(a):
+            if a.lat is None or a.lon is None:
+                return float("inf")
+            return (a.lat - clat) ** 2 + ((a.lon - clon) * cosc) ** 2
+
+        out.sort(key=_d2)
+        out = out[:MAX_AIRCRAFT]
+    return out

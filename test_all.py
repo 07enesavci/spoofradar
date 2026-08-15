@@ -632,7 +632,13 @@ def test_adsblol():
     # bbox -> merkez+yaricap
     clat, clon, dist = adsb_lol._bbox_to_center_radius((35.0, 25.0, 43.0, 45.0))
     check("merkez bbox ortasi", abs(clat - 39.0) < 0.01 and abs(clon - 35.0) < 0.01)
-    check("yaricap 250nm ile sinirli", dist <= adsb_lol.MAX_DIST_NM)
+    check("yaricap bbox'i kapsar (>300nm)", dist > 300)
+    check("yaricap ust sinirli", dist <= adsb_lol.MAX_DIST_NM)
+    # 'Tum dunya' (bbox None) -> yogun merkez + genis yaricap
+    wlat, wlon, wdist = adsb_lol._bbox_to_center_radius(None)
+    check("dunya genis yaricap", wdist >= 2000)
+    # Sinir: MAX_AIRCRAFT ustu kirpilir
+    check("ucak siniri tanimli", adsb_lol.MAX_AIRCRAFT >= 200)
     # ADS.lol kaydini Aircraft'a cevir (birim donusumleri)
     raw = {"hex": "4ba9d0", "flight": "THY1177 ", "lat": 40.1, "lon": 33.2,
            "alt_baro": 30000, "alt_geom": 30500, "gs": 400, "track": 180.0,
