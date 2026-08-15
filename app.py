@@ -396,6 +396,9 @@ def _dashboard():
     qs = q.status(cost)
 
     # --- Cevrimdisi demo afisi -------------------------------------------------
+    # Fetch sirasinda auto_offline degismis olabilir — afis AYNI turda ciksin
+    # (yoksa bir yenileme geç gorunur).
+    want_offline = offline_mode or ss.auto_offline
     if want_offline:
         if offline_mode:
             st.info("🧪 **ÇEVRİMDIŞI DEMO** — sentetik trafik (internet gerekmez). "
