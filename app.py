@@ -1031,92 +1031,97 @@ def _dashboard():
         st.caption("Gemiler de AIS ile **şifresiz** konum yayınlar — uçaklarla "
                    "aynı spoofing sorunu. İmkansız hız, klon MMSI tespit edilir.")
 
-        if not ais_available():
-            st.warning("⚓ Canlı gemi verisi için **aisstream.io ücretsiz anahtarı** "
-                       "gerekir. [aisstream.io](https://aisstream.io) → kayıt → "
-                       "anahtar → Streamlit secrets'a `AISSTREAM_KEY = \"...\"` ekle.")
-            st.markdown("**🧪 Tespit demosu (anahtarsız çalışır)**")
-            if st.button("Sahte gemi enjekte et → tespiti gör"):
-                import time as _t
-                t = _t.time()
-                prev = {"111": Ship("111", "SPOOFSHIP", 39.0, 26.0, 20, 90, t - 60)}
-                ships = [Ship("111", "SPOOFSHIP", 40.0, 26.0, 20, 90, t),
-                         Ship("222", "CLONE", 39, 26, 10, 0, t),
-                         Ship("222", "CLONE", 41, 28, 10, 0, t)]
-                sa = analyze_ships(prev, ships)
+        SEA_BOXES = {
+            "İstanbul Boğazı + Marmara": (40.3, 26.5, 41.3, 29.9),
+            "Ege (İzmir-Çanakkale)": (37.5, 25.0, 40.3, 27.5),
+            "Akdeniz (Antalya-Mersin)": (35.5, 29.0, 37.0, 35.0),
+            "Karadeniz kıyısı": (41.0, 28.0, 42.5, 40.0),
+        }
+
+        def _render_ships(ships, prev, view_zoom=7):
+            """Gemi haritasi + tespit + alarm tablosu (demo/canli ortak)."""
+            sea_alerts = analyze_ships(prev, ships)
+            m1, m2 = st.columns(2)
+            m1.metric("🚢 Gemi", len(ships))
+            m2.metric("⚠️ Gemi alarmı", len(sea_alerts))
+            alert_mmsi = {a.mmsi for a in sea_alerts}
+            sdf = pd.DataFrame([{
+                "lat": s.lat, "lon": s.lon, "mmsi": s.mmsi,
+                "name": s.name or "-", "sog": round(s.sog or 0, 1),
+                "color": [235, 45, 45] if s.mmsi in alert_mmsi else [40, 200, 180]}
+                for s in ships if s.has_position])
+            if not sdf.empty:
+                st.pydeck_chart(pdk.Deck(
+                    layers=[pdk.Layer("ScatterplotLayer", data=sdf,
+                            get_position="[lon, lat]", get_fill_color="color",
+                            get_radius=2000, radius_min_pixels=3, opacity=0.8,
+                            pickable=True)],
+                    initial_view_state=pdk.ViewState(
+                        latitude=sdf["lat"].mean(), longitude=sdf["lon"].mean(),
+                        zoom=view_zoom),
+                    map_style="dark",
+                    tooltip={"text": "{name} ({mmsi})\nhız {sog} knot"}))
+                st.caption("🔵 normal gemi   🔴 alarmlı gemi (klon MMSI / imkansız hız)")
+            if sea_alerts:
+                st.error(f"🔴 {len(sea_alerts)} gemi alarmı — spoofing şüphesi:")
                 st.dataframe(pd.DataFrame([{
                     "MMSI": a.mmsi, "Gemi": a.name, "Tür": a.kind,
-                    "Açıklama": a.detail} for a in sa]),
+                    "Açıklama": a.detail} for a in sea_alerts]),
                     width="stretch", hide_index=True)
-                st.success(f"{len(sa)} gemi alarmı — AIS tespit motoru çalışıyor.")
+            else:
+                st.success("Gemi trafiği temiz — spoofing yok.")
+
+        # Demo VARSAYILAN: anahtar yoksa acik; anahtar varsa kullanici acabilir.
+        # aisstream ucretsiz katmani kararsiz — demo her zaman calisir.
+        demo_ships_on = st.checkbox(
+            "🧪 Demo gemi trafiği (anahtarsız — hareketli gemiler + spoofing)",
+            value=not ais_available(), key="demo_ships",
+            help="aisstream anahtarı gerekmez. Sentetik hareketli gemiler üretir, "
+                 "içine klon MMSI + imkansız hız spoof gömer — tespit motorunu "
+                 "canlı gösterir.")
+
+        if demo_ships_on:
+            from ais import generate_demo_ships
+            sea_region = st.selectbox("Deniz bölgesi", list(SEA_BOXES.keys()),
+                                      key="demo_sea_region")
+            ships, prev = generate_demo_ships(SEA_BOXES[sea_region])
+            st.info("🧪 Çevrimdışı demo — gerçek AIS algoritması, sentetik gemiler. "
+                    "'🔄 Yenile' ile gemiler ilerler.")
+            _render_ships(ships, prev)
+        elif not ais_available():
+            st.warning("⚓ Canlı gemi için **aisstream.io anahtarı** gerekir "
+                       "([aisstream.io](https://aisstream.io) → kayıt → anahtar → "
+                       "secrets'a `AISSTREAM_KEY`). Ya da yukarıdaki **demo**yu aç.")
         else:
-            st.success("⚓ Canlı AIS beslemesi bağlı.")
-            # Deniz-yogun bolge secimi (Turkiye kutusu ic Anadolu agirlikli;
-            # deniz icin kiyi kutulari)
-            SEA_BOXES = {
-                "İstanbul Boğazı + Marmara": (40.3, 26.5, 41.3, 29.9),
-                "Ege (İzmir-Çanakkale)": (37.5, 25.0, 40.3, 27.5),
-                "Akdeniz (Antalya-Mersin)": (35.5, 29.0, 37.0, 35.0),
-                "Karadeniz kıyısı": (41.0, 28.0, 42.5, 40.0),
-            }
+            st.success("⚓ Canlı AIS anahtarı bağlı.")
             sea_region = st.selectbox("Deniz bölgesi", list(SEA_BOXES.keys()))
-            sea_secs = st.slider("Dinleme süresi (sn)", 5, 25, 12,
+            sea_secs = st.slider("Dinleme süresi (sn)", 5, 30, 15,
                                  help="Uzun süre = daha çok gemi ama daha yavaş.")
             if st.button("🚢 Canlı gemileri çek"):
                 with st.spinner(f"Gemi verisi çekiliyor (~{sea_secs} sn)..."):
                     from ais import fetch_ships_debug
-                    bbox_sea = SEA_BOXES[sea_region]
                     prev_ships = {s.mmsi: s for s in ss.get("ships_cache", [])}
-                    ships, sea_status = fetch_ships_debug(bbox_sea, seconds=sea_secs)
+                    ships, sea_status = fetch_ships_debug(SEA_BOXES[sea_region],
+                                                          seconds=sea_secs)
                     ss.ships_cache = ships
                     ss.ships_prev = prev_ships
                     ss.sea_status = sea_status
 
-            # Durum mesaji (teshis)
             if ss.get("sea_status"):
-                if "OK:" in ss.sea_status:
-                    st.success(ss.sea_status)
-                elif "HATA" in ss.sea_status or "geçersiz" in ss.sea_status:
-                    st.error(ss.sea_status)
+                s = ss.sea_status
+                if "OK:" in s:
+                    st.success(s)
+                elif "HATA" in s or "geçersiz" in s:
+                    st.error(s + "  → Anahtarı kontrol et veya yukarıdan **demo**yu aç.")
                 else:
-                    st.info(ss.sea_status)
+                    st.info(s + "  → Boğaz'da veri gelmezse anahtar geçersiz olabilir; "
+                            "**demo**yu açıp tespiti yine de gör.")
 
             ships = ss.get("ships_cache", [])
             if ships:
-                # Spoofing tespiti
-                sea_alerts = analyze_ships(ss.get("ships_prev", {}), ships)
-                m1, m2 = st.columns(2)
-                m1.metric("🚢 Gemi", len(ships))
-                m2.metric("⚠️ Gemi alarmı", len(sea_alerts))
-
-                # Harita
-                sdf = pd.DataFrame([{
-                    "lat": s.lat, "lon": s.lon, "mmsi": s.mmsi,
-                    "name": s.name or "-", "sog": s.sog or 0,
-                    "color": [235, 45, 45] if any(a.mmsi == s.mmsi for a in sea_alerts)
-                    else [40, 200, 180]}
-                    for s in ships if s.has_position])
-                if not sdf.empty:
-                    st.pydeck_chart(pdk.Deck(
-                        layers=[pdk.Layer("ScatterplotLayer", data=sdf,
-                                get_position="[lon, lat]", get_fill_color="color",
-                                get_radius=2000, opacity=0.7, pickable=True)],
-                        initial_view_state=pdk.ViewState(
-                            latitude=sdf["lat"].mean(), longitude=sdf["lon"].mean(),
-                            zoom=6),
-                        map_style="dark",
-                        tooltip={"text": "{name} ({mmsi})\nhız {sog} knot"}))
-                    st.caption("🔵 normal gemi   🔴 alarmlı gemi")
-
-                if sea_alerts:
-                    st.dataframe(pd.DataFrame([{
-                        "MMSI": a.mmsi, "Gemi": a.name, "Tür": a.kind,
-                        "Açıklama": a.detail} for a in sea_alerts]),
-                        width="stretch", hide_index=True)
-                else:
-                    st.success("Gemi trafiği temiz — spoofing yok.")
+                _render_ships(ships, ss.get("ships_prev", {}), view_zoom=6)
             elif not ss.get("sea_status"):
-                st.info("Yukarıdan deniz bölgesi seç → '🚢 Canlı gemileri çek' bas.")
+                st.info("Deniz bölgesi seç → '🚢 Canlı gemileri çek' bas.")
 
 
 _dashboard()

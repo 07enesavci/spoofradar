@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import math
 import os
+import random
+import time
 from dataclasses import dataclass
 
 from detectors import haversine
@@ -107,6 +109,79 @@ def analyze_ships(prev_by_mmsi: dict[str, Ship],
 def ais_available() -> bool:
     """Canli AIS besleme (aisstream.io anahtari) ayarli mi?"""
     return bool(os.environ.get("AISSTREAM_KEY"))
+
+
+# --- Cevrimdisi/demo gemi trafigi -----------------------------------------
+# aisstream.io ucretsiz katmani kararsiz (baglanir ama veri gelmeyebilir) ve
+# gecerli anahtar ister. Bu ureteci ANAHTARSIZ calisir: hareket eden gemiler
+# + gomulu spoofing (klon MMSI + imkansiz hiz) uretir; tespit motoru canli
+# gosterilir. Uçaktaki generate_normal_traffic'in deniz karsiligi.
+import math as _math
+
+_SHIP_NAMES = ["KARADENIZ", "MARMARA", "EGE YILDIZI", "ANADOLU", "BOSPHORUS",
+               "PONTUS", "LEVANT", "AKDENIZ", "TROIA", "GALATA", "HALIC",
+               "IZMIR STAR", "MERSIN", "SAMSUN", "TRABZON"]
+_ship_fleets: dict[tuple, list[dict]] = {}
+
+
+def generate_demo_ships(bbox, n: int = 18):
+    """Sentetik gemi anlik goruntusu + spoofing. Doner: (gemiler, onceki_mmsi).
+
+    Normal gemiler bbox icinde yavas hareket eder (kalici filo, cagrilar arasi
+    ilerler). Ustune 2 spoof: KLON MMSI (ayni MMSI iki uzak konum) ve IMKANSIZ
+    HIZ (onceki konum uzak -> ima edilen hiz gemi limiti ustu). analyze_ships
+    bunlari yakalar. Anahtar GEREKMEZ.
+    """
+    if not bbox:
+        bbox = (40.3, 26.5, 41.3, 29.9)
+    lamin, lomin, lamax, lomax = bbox
+    key = tuple(round(x, 3) for x in bbox) + (n,)
+    now = time.time()
+
+    fleet = _ship_fleets.get(key)
+    if fleet is None:
+        rng = random.Random(hash(key) & 0xFFFFFFFF)
+        fleet = []
+        for i in range(n):
+            fleet.append({
+                "mmsi": f"2710{i:05d}",           # 271=Turkiye MID
+                "name": rng.choice(_SHIP_NAMES),
+                "lat": rng.uniform(lamin + 0.05, lamax - 0.05),
+                "lon": rng.uniform(lomin + 0.05, lomax - 0.05),
+                "cog": rng.uniform(0, 359),
+                "sog": rng.uniform(6, 18),         # knot (normal gemi)
+                "t": now,
+            })
+        _ship_fleets[key] = fleet
+
+    ships, prev = [], {}
+    for f in fleet:
+        dt = min(now - f["t"], 30.0)
+        f["t"] = now
+        dist = f["sog"] * KNOT_TO_MS * dt          # metre
+        rad = _math.radians(f["cog"])
+        f["lat"] += (dist * _math.cos(rad)) / 111320.0
+        cosl = _math.cos(_math.radians(f["lat"])) or 1e-6
+        f["lon"] += (dist * _math.sin(rad)) / (111320.0 * cosl)
+        if f["lat"] <= lamin or f["lat"] >= lamax:
+            f["cog"] = (180 - f["cog"]) % 360
+            f["lat"] = min(max(f["lat"], lamin + 0.02), lamax - 0.02)
+        if f["lon"] <= lomin or f["lon"] >= lomax:
+            f["cog"] = (360 - f["cog"]) % 360
+            f["lon"] = min(max(f["lon"], lomin + 0.02), lomax - 0.02)
+        ships.append(Ship(f["mmsi"], f["name"], f["lat"], f["lon"],
+                          f["sog"], f["cog"], now))
+
+    clat = (lamin + lamax) / 2
+    clon = (lomin + lomax) / 2
+    # SPOOF 1 — klon MMSI: ayni kimlik iki uzak konumda (find_duplicate_mmsi)
+    ships.append(Ship("666000111", "GHOST-A", clat, clon, 12, 45, now))
+    ships.append(Ship("666000111", "GHOST-A", clat + 0.4, clon + 0.4, 12, 45, now))
+    # SPOOF 2 — imkansiz hiz: onceki konum ~50km uzak, 30s'de = ~3000 knot
+    prev["777000222"] = Ship("777000222", "TELEPORT", clat - 0.5, clon - 0.5,
+                             10, 90, now - 30)
+    ships.append(Ship("777000222", "TELEPORT", clat, clon, 10, 90, now))
+    return ships, prev
 
 
 def fetch_ships(bbox, seconds: float = 8.0, max_ships: int = 400) -> list[Ship]:

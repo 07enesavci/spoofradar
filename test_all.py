@@ -600,6 +600,22 @@ def test_ais():
     check("klon MMSI tespit", len(dup) == 1)
     check("ais_available bool", isinstance(ais_available(), bool))
 
+    # Cevrimdisi/demo gemi ureteci (anahtarsiz) + gomulu spoofing
+    from ais import generate_demo_ships
+    bbox = (40.3, 26.5, 41.3, 29.9)
+    ships, prev = generate_demo_ships(bbox)
+    check("demo gemi uretir", len(ships) >= 15)
+    check("demo gemi konumlu", all(s.has_position for s in ships))
+    da = analyze_ships(prev, ships)
+    kinds = {a.kind for a in da}
+    check("demo klon MMSI tetikler", "duplicate_mmsi" in kinds)
+    check("demo imkansiz hiz tetikler", "impossible_speed" in kinds)
+    import time as _tt
+    _tt.sleep(0.4)
+    ships2, _ = generate_demo_ships(bbox)
+    check("demo gemiler hareket eder",
+          (ships2[0].lat, ships2[0].lon) != (ships[0].lat, ships[0].lon))
+
 
 # --- drone.py --------------------------------------------------------------
 def test_drone():
