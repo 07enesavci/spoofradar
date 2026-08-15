@@ -40,6 +40,7 @@ from events import find_dark, find_conflicts
 from geofence import check_zones, DEFAULT_ZONES
 from fingerprint import FingerprintStore
 from simulator import inject, SCENARIO_LABELS, generate_normal_traffic
+import adsb_lol
 from report import build_html_report
 from mlat import (Receiver, solve_tdoa, geodetic_to_ecef, cross_check, C,
                   _HAS_NUMPY)
@@ -145,6 +146,7 @@ ss.setdefault("fp", FingerprintStore(min_obs=8))  # uçak parmak izi
 ss.setdefault("count_hist", [])           # (uçak, kural, ml) gecmisi = sparkline
 ss.setdefault("last_report", "")          # son AI rapor metni
 ss.setdefault("auto_offline", False)      # canli veri hata verince cevrimdisi'na dus
+ss.setdefault("last_source", "-")         # son veri kaynagi: adsb.lol / opensky / offline
 
 TRACK_LEN = 25  # her uçak icin saklanan son konum sayisi (rota izi)
 HIST_LEN = 40   # sparkline nokta sayisi
@@ -255,8 +257,18 @@ def fetch_and_analyze(offline: bool = False):
     if offline:
         # Sentetik trafik — ag yok. Demo enjeksiyonu yine ustune biner.
         current = generate_normal_traffic(bbox)
+        ss.last_source = "offline"
     else:
-        current = fetch_states(bbox=bbox)
+        # KAYNAK ZINCIRI: adsb.lol (Cloud'dan erisilebilir, anahtarsiz) ->
+        # OpenSky (yerelde iyi, Cloud'da engelli) -> hata ise disarida cevrimdisi.
+        try:
+            current = adsb_lol.fetch_states(bbox)
+            if not current:
+                raise RuntimeError("adsb.lol bos dondu")
+            ss.last_source = "adsb.lol"
+        except Exception:
+            current = fetch_states(bbox=bbox)   # OpenSky yedek
+            ss.last_source = "opensky"
 
     # Spoof demo: sahte uçaklari gercek trafige enjekte et (prev'e tohum ekler)
     if demo_on and scenarios:
@@ -363,7 +375,9 @@ def _dashboard():
         try:
             ss.cache = fetch_and_analyze(offline=want_offline)
             if not want_offline:
-                q.record(cost)          # sadece basarili CANLI istegi ucretlendir
+                # Kota SADECE OpenSky kullanildiysa harcanir (adsb.lol kotasiz).
+                if ss.last_source == "opensky":
+                    q.record(cost)
                 ss.auto_offline = False  # canli veri geldi: fallback kapat
             ss.last_fetch = time.time()
         except Exception as e:
@@ -405,9 +419,15 @@ def _dashboard():
                     "Tespit motoru gerçek algoritmalarla çalışıyor. "
                     "Canlı veri için sol menüden çevrimdışı modu kapat.")
         else:
-            st.warning("📡 **Canlı veriye ulaşılamadı** (Cloud/OpenSky yavaş olabilir) — "
+            st.warning("📡 **Canlı veriye ulaşılamadı** (kaynaklar yavaş/engelli olabilir) — "
                        "otomatik **çevrimdışı demoya** geçildi. Motor çalışmaya devam "
                        "ediyor. '🔄 Yenile' ile canlı veriyi tekrar dener.")
+    else:
+        # Canli — hangi kaynak?
+        if ss.last_source == "adsb.lol":
+            st.caption("🟢 Canlı veri: **adsb.lol** — gerçek ADS-B (anahtarsız, Cloud uyumlu)")
+        elif ss.last_source == "opensky":
+            st.caption("🟢 Canlı veri: **OpenSky Network**")
 
     # --- Kota durumu (ana alan — fragment sidebar'a yazamaz) -------------------
     # NOT: fragment icinde st.sidebar cagrilamaz. Kota durumunu ana alanda goster.

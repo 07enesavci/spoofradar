@@ -620,6 +620,34 @@ def test_history():
     check("bolgeler tanimli", set(REGIONS) == {"turkey", "europe", "world"})
 
 
+# --- adsb_lol.py (Cloud-uyumlu canli kaynak) -------------------------------
+def test_adsblol():
+    section("adsb_lol.py")
+    import adsb_lol
+    # bbox -> merkez+yaricap
+    clat, clon, dist = adsb_lol._bbox_to_center_radius((35.0, 25.0, 43.0, 45.0))
+    check("merkez bbox ortasi", abs(clat - 39.0) < 0.01 and abs(clon - 35.0) < 0.01)
+    check("yaricap 250nm ile sinirli", dist <= adsb_lol.MAX_DIST_NM)
+    # ADS.lol kaydini Aircraft'a cevir (birim donusumleri)
+    raw = {"hex": "4ba9d0", "flight": "THY1177 ", "lat": 40.1, "lon": 33.2,
+           "alt_baro": 30000, "alt_geom": 30500, "gs": 400, "track": 180.0,
+           "baro_rate": 600, "squawk": "1216"}
+    a = adsb_lol._parse(raw, 1000.0)
+    check("hex -> icao24 kucuk harf", a.icao24 == "4ba9d0")
+    check("flight -> callsign trim", a.callsign == "THY1177")
+    check("feet -> metre (30000ft ~9144m)", abs(a.baro_alt - 9144) < 5)
+    check("knot -> m/s (400kt ~205)", abs(a.velocity - 205.8) < 1)
+    check("ft/dk -> m/s (600 ~3.05)", abs(a.vertical_rate - 3.048) < 0.1)
+    check("ADS-B kaynak", a.position_source == 0)
+    # 'ground' irtifa string'i cokmez
+    g = adsb_lol._parse({"hex": "abc", "alt_baro": "ground", "lat": 1, "lon": 2},
+                        1000.0)
+    check("'ground' -> on_ground, baro None", g.on_ground and g.baro_alt is None)
+    # analyze adsb.lol tipli veride cokmez
+    from detectors import analyze
+    check("analyze adsb.lol veride cokmez", isinstance(analyze({}, [a]), list))
+
+
 # --- canli (opsiyonel) -----------------------------------------------------
 def test_live():
     section("CANLI OpenSky (--live)")
@@ -641,7 +669,8 @@ def main():
              test_verify, test_events, test_geofence, test_fingerprint,
              test_simulator, test_mlat, test_quota, test_alerts_db,
              test_ai_report, test_notify_report, test_api, test_env,
-             test_callsign, test_predict, test_ais, test_drone, test_history]
+             test_callsign, test_predict, test_ais, test_drone, test_history,
+             test_adsblol]
     for t in tests:
         try:
             t()

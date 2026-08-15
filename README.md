@@ -1,7 +1,7 @@
 # 🛰️ SpoofRadar
 
 **Canlı uçak trafiğini izleyip spoofing / anomali / GPS-jamming tespit eden savunma aracı.**
-Donanım gerekmez — veri halka açık [OpenSky Network](https://opensky-network.org) API'sinden gelir.
+Donanım gerekmez — veri halka açık [adsb.lol](https://adsb.lol) ve [OpenSky Network](https://opensky-network.org) API'lerinden gelir.
 
 Havacılık + siber güvenlik + veri bilimi. Aynı savunma mimarisi **deniz (AIS)** ve **drone (RemoteID)** trafiğine de taşınır.
 
@@ -34,8 +34,9 @@ Bu yüzden sahte uçak enjekte edilebilir veya gerçek uçağın verisi bozulabi
 
 ```mermaid
 flowchart LR
-    A[OpenSky Network<br/>canlı ADS-B] --> B[opensky.py<br/>çek + retry]
-    O[Çevrimdışı üreteç<br/>simulator.py] -. internet yoksa .-> C
+    A1[adsb.lol<br/>canlı ADS-B · anahtarsız] --> B[Kaynak zinciri]
+    A2[OpenSky Network<br/>yedek] --> B
+    O[Çevrimdışı üreteç<br/>simulator.py] -. hepsi başarısızsa .-> C
     B --> C[Anlık trafik<br/>list Aircraft]
     C --> D{Tespit motoru}
     D --> D1[Kural<br/>detectors.py]
@@ -112,15 +113,20 @@ Sol kenarda **canlı radar** + kota göstergesi. Ayarlar/demo expander'larda (ar
 4. **Advanced settings → Secrets** bölümüne `secrets.toml.example` içeriğini yapıştır, doldur
 5. Deploy → `adsb-guard.streamlit.app` hazır
 
-### ⚠️ Canlıda OpenSky hesabı ŞART
+### Canlı veri Cloud'da nasıl geliyor?
 
-Anonim kota (~400/gün) sunucu IP'sine bağlı — herkes aynı kotayı paylaşır, hızla biter.
-[OpenSky ücretsiz hesap](https://opensky-network.org) aç (4000/gün), secrets'a koy:
+Birincil kaynak **[adsb.lol](https://adsb.lol)** — anahtar gerektirmez ve bulut sunuculardan
+erişilebilir, yani deploy sitede **gerçek uçaklar** akar (secrets'a hiçbir şey koymadan).
+
+OpenSky yedek kaynaktır; datacenter IP'lerini engellediği için Streamlit Cloud'dan
+çoğu zaman erişilemez. İstersen yine de hesap ekleyebilirsin (yerelde 4000/gün):
 
 ```toml
 OPENSKY_USER = "kullanıcı"
 OPENSKY_PASS = "parola"
 ```
+
+Her iki kaynak da başarısızsa dashboard **çevrimdışı sentetik trafiğe** düşer — boş ekran vermez.
 
 ### Alternatif platformlar
 
@@ -167,7 +173,8 @@ python report.py                 # HTML/PDF rapor üret
 | Dosya | İş |
 |-------|-----|
 | `app.py` | Streamlit dashboard (7 sekme) |
-| `opensky.py` | OpenSky API istemcisi |
+| `adsb_lol.py` | adsb.lol canlı ADS-B (Cloud-uyumlu, anahtarsız birincil kaynak) |
+| `opensky.py` | OpenSky API istemcisi (yedek kaynak) |
 | `detectors.py` | Kural-tabanlı tespit |
 | `ml_detector.py` | ML anomali (IsolationForest, mutlak eşik) |
 | `verify.py` | Çok-sinyal çapraz doğrulama |
