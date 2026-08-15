@@ -693,6 +693,10 @@ def test_icao_country():
     check("THY hex (4ba...) -> Turkey", country_from_icao("4ba9d0") == "Turkey")
     check("Pakistan (765...) DEGIL Singapur", country_from_icao("765abc") == "Pakistan")
     check("Singapur (76a...) dogru", country_from_icao("76abcd") == "Singapore")
+    check("Etiyopya (040...) dogru", country_from_icao("040219") == "Ethiopia")
+    check("Hong Kong (789...) DEGIL Cin", country_from_icao("789275") == "Hong Kong")
+    check("Cin (780...) hala Cin", country_from_icao("78012a") == "China")
+    check("Cin (7ba...) hala Cin", country_from_icao("7ba123") == "China")
     from icao_country import _RANGES
     srt = sorted(_RANGES)
     overlap = any(srt[i][1] >= srt[i + 1][0] for i in range(len(srt) - 1))
